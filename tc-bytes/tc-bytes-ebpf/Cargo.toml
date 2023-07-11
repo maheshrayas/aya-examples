@@ -5,9 +5,10 @@ edition = "2021"
 
 [dependencies]
 aya-bpf = { git = "https://github.com/aya-rs/aya", branch = "main" }
-aya-log-ebpf = { git = "https://github.com/aya-rs/aya-log", branch = "main" }
-memoffset = "0.6"
+memoffset = "0.9.0"
 tc-bytes-common = { path = "../tc-bytes-common" }
+aya-log-ebpf = { git = "https://github.com/aya-rs/aya", branch = "main" }
+network-types = "0.0.4"
 
 [[bin]]
 name = "tc-bytes"

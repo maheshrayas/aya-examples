@@ -8,7 +8,7 @@ use tokio::signal;
 
 #[derive(Debug, Parser)]
 struct Opt {
-    #[clap(short, long, default_value = "eth0")]
+    #[clap(short, long, default_value = "veth169d80e7")]
     iface: String,
 }
 
@@ -38,13 +38,19 @@ async fn main() -> Result<(), anyhow::Error> {
     let mut bpf = Bpf::load(include_bytes_aligned!(
         "../../target/bpfel-unknown-none/release/tc"
     ))?;
-    BpfLogger::init(&mut bpf)?;
+
+    if let Err(e) = BpfLogger::init(&mut bpf) {
+        // This can happen if you remove all log statements from your eBPF program.
+        println!("failed to initialize eBPF logger: {}", e);
+    }
+
+    println!("starting the process");
     // error adding clsact to the interface if it is already added is harmless
     // the full cleanup can be done with 'sudo tc qdisc del dev eth0 clsact'.
     let _ = tc::qdisc_add_clsact(&opt.iface);
     let program: &mut SchedClassifier = bpf.program_mut("tc").unwrap().try_into()?;
     program.load()?;
-    program.attach(&opt.iface, TcAttachType::Egress)?;
+    program.attach(&opt.iface, TcAttachType::Ingress)?;
 
     info!("Waiting for Ctrl-C...");
     signal::ctrl_c().await?;
