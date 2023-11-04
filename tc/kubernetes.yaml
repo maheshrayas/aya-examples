@@ -1,0 +1,116 @@
+# ---
+# apiVersion: v1
+# kind: Namespace
+# metadata:
+#   name: kube-guardian
+# ---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: kube-guardian
+  namespace: kube-guardian
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: kube-guardian-tc
+rules:
+- apiGroups: ["*"]
+  resources: ["namespaces", "pods", "services", "endpointslices"]
+  verbs:
+    - get
+    - watch
+    - list
+- apiGroups:
+    - "*"
+  resources:
+    - "guardians"
+  verbs:
+    - get
+    - watch
+    - list
+    - patch
+    - delete
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: kube-guardian-tc
+  namespace: kube-guardian
+subjects:
+- kind: ServiceAccount
+  name: kube-guardian
+  namespace: kube-guardian
+roleRef:
+  kind: ClusterRole
+  name: kube-guardian-tc
+  apiGroup: rbac.authorization.k8s.io
+---
+apiVersion: apps/v1
+kind: DaemonSet
+metadata:
+  name: tc
+  namespace: kube-guardian
+spec:
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: kube-guardian
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: kube-guardian
+    spec:
+      #hostPID: true
+      hostNetwork: true
+      containers:
+      - name: tc
+        image: "maheshrayas/tc:v0.99.2" # 2 egress 0 ingress
+        args: 
+          - "--iface=lxcbd8ca231d22c"
+          # gke11a5d8dedf0
+        imagePullPolicy: IfNotPresent
+        securityContext:
+          # allowPrivilegeEscalation: true
+          privileged: true
+          capabilities:
+            add:
+            - CAP_BPF
+        env:
+        - name: RUST_LOG
+          value: INFO
+        - name: CURRENT_NODE
+          valueFrom:
+            fieldRef:
+              fieldPath: spec.nodeName
+        volumeMounts:
+        - name: bpffs
+          mountPath: /sys/fs/bpf
+        - name: run-containerd-bundle
+          mountPath: /run/containerd/io.containerd.runtime.v2.task
+        - name: containerd-sock
+          mountPath: /run/containerd/containerd.sock
+          readOnly: true
+        - mountPath: /proc
+          name: hostproc
+      serviceAccountName: kube-guardian
+      dnsPolicy: ClusterFirstWithHostNet
+      tolerations:
+      - operator: Exists
+      volumes:
+      - name: bpffs
+        hostPath:
+          path: /sys/fs/bpf
+          type: Directory
+      - name: run-containerd-bundle
+        hostPath:
+          path: /run/containerd/io.containerd.runtime.v2.task
+      - name: containerd-sock
+        hostPath:
+          path: /run/containerd/containerd.sock
+      - hostPath:
+          path: /proc
+          type: Directory
+        name: hostproc
+      nodeSelector:
+        kubernetes.io/os: linux
+        kubernetes.io/arch: amd64
